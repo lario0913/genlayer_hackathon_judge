@@ -15,7 +15,24 @@ import json
 #      Principle (scores within 10 points = "equivalent").
 #   5. Organizer calls distribute_prizes() — ranks all judged participants
 #      and pays out 50% / 30% / 20% of the pool to the top 3.
+#
+#  IMPORTANT: gl.get_contract_at() targets other GenVM Intelligent Contracts.
+#  Winners here are plain wallet addresses (EOAs) — sending value to an EOA
+#  must go through the EVM ghost-contract layer instead, via a
+#  @gl.evm.contract_interface wrapper. Using gl.get_contract_at() on an EOA
+#  causes GenVM to attempt deploying a contract there, which fails.
 # ═══════════════════════════════════════════════════════════════════════════
+
+@gl.evm.contract_interface
+class Wallet:
+    """Minimal EVM interface used only to send plain GEN value to an
+    address that may be a wallet (EOA) rather than a GenVM contract."""
+    class View:
+        pass
+
+    class Write:
+        pass
+
 
 class HackathonJudge(gl.Contract):
 
@@ -120,7 +137,7 @@ class HackathonJudge(gl.Contract):
 
         # ── Non-deterministic block ────────────────────────────────────
         def nondet():
-            readme = gl.nondet.web.get_text(repo_url)
+            readme = gl.nondet.web.render(repo_url, mode="text")
 
             prompt = f"""
 You are judging a hackathon submission.
@@ -213,9 +230,7 @@ Do not include any other words, explanation, or formatting.
             addr, _score = ranked[i]
             payout = pool * splits[i] // 100
             if payout > 0:
-                gl.get_contract_at(Address(addr)).transfer(
-                    value=u256(payout), on="finalized"
-                )
+                Wallet(Address(addr)).emit_transfer(value=u256(payout))
 
         self.distributed = True
 
